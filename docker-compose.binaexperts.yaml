@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  open-webui:
+    image: ghcr.io/binaexperts/open-webui:latest  # Use your custom image
+    container_name: open-webui
+    restart: always
+    ports:
+      - "3000:8080"  # Localhost access only, NGINX will handle external traffic
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+    env_file:
+      - .env  # Load environment variables from .env file
+    volumes:
+      - open-webui-data:/app/backend/data  # Persist Open WebUI data
+    networks:
+      - open-web-network
+
+  ollama:
+    image: ollama/ollama:1.0  # Specify version for the Ollama image
+    container_name: ollama
+    restart: always
+    command: ollama serve
+    ports:
+      - "11434:11434"
+    env_file:
+      - .env  # Load from .env if additional variables are needed
+    networks:
+      - open-web-network
+
+  postgres:
+    image: postgres:15  # Hardcoded to PostgreSQL version 15
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env  # Load PostgreSQL config from .env file
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - open-web-network
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400  # 24 hours
+
+volumes:
+  open-webui-data:
+    driver: local
+  postgres_data:
+    driver: local
+
+networks:
+  open-web-network:
+    driver: bridge
