@@ -1,4 +1,5 @@
 root/.github/workflows/binaexperts.yml
+root/.env.binaexperts
 root/docker-compose.binaexperts.yaml
 root/static/favicon.png
 root/opensearch.xml -> <ShortName>Chat Experts</ShortName> <Description>Search ChatExperts</Description>
