@@ -3,6 +3,7 @@ import uuid
 import time
 import datetime
 
+import jwt
 from open_webui.apps.webui.models.auths import (
     AddUserForm,
     ApiKey,
@@ -39,7 +40,18 @@ from open_webui.utils.utils import (
 from open_webui.utils.webhook import post_webhook
 from typing import Optional
 
+from backend.open_webui.apps.webui.binaexperts.service.utils import send_confirmation_email
+
+from backend.open_webui.apps.webui.binaexperts.service.servises import EmailConfirmation
+
 router = APIRouter()
+
+
+def generate_verification_token(user_id: int, secret_key: str, expires_in: int = 3600):
+    expiration = datetime.datetime.utcnow() + datetime.timedelta(seconds=expires_in)
+    _token = jwt.encode({"user_id": user_id, "exp": expiration}, secret_key, algorithm="HS256")
+    return _token
+
 
 ############################
 # GetSessionUser
@@ -52,7 +64,7 @@ class SessionUserResponse(Token, UserResponse):
 
 @router.get("/", response_model=SessionUserResponse)
 async def get_session_user(
-    request: Request, response: Response, user=Depends(get_current_user)
+        request: Request, response: Response, user=Depends(get_current_user)
 ):
     expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
     expires_at = None
@@ -99,7 +111,7 @@ async def get_session_user(
 
 @router.post("/update/profile", response_model=UserResponse)
 async def update_profile(
-    form_data: UpdateProfileForm, session_user=Depends(get_verified_user)
+        form_data: UpdateProfileForm, session_user=Depends(get_verified_user)
 ):
     if session_user:
         user = Users.update_user_by_id(
@@ -121,7 +133,7 @@ async def update_profile(
 
 @router.post("/update/password", response_model=bool)
 async def update_password(
-    form_data: UpdatePasswordForm, session_user=Depends(get_current_user)
+        form_data: UpdatePasswordForm, session_user=Depends(get_current_user)
 ):
     if WEBUI_AUTH_TRUSTED_EMAIL_HEADER:
         raise HTTPException(400, detail=ERROR_MESSAGES.ACTION_PROHIBITED)
@@ -234,8 +246,8 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 async def signup(request: Request, response: Response, form_data: SignupForm):
     if WEBUI_AUTH:
         if (
-            not request.app.state.config.ENABLE_SIGNUP
-            or not request.app.state.config.ENABLE_LOGIN_FORM
+                not request.app.state.config.ENABLE_SIGNUP
+                or not request.app.state.config.ENABLE_LOGIN_FORM
         ):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.ACCESS_PROHIBITED
@@ -307,6 +319,17 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
                     },
                 )
 
+            # Extra code Begin
+            if not user.is_verified:
+                verification_token = generate_verification_token(user.id, request.app.state.config.SECRET_KEY)
+                confirmation_link = f"{request.app.state.config.FRONTEND_URL}/verify?token={verification_token}"
+                EmailConfirmation().send_confirmation(
+                    user_name=user.name,
+                    recipient_email=user.email,
+                    confirmation_link=confirmation_link
+                )
+            # Extra code End
+
             return {
                 "token": token,
                 "token_type": "Bearer",
@@ -327,6 +350,64 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
 async def signout(response: Response):
     response.delete_cookie("token")
     return {"status": True}
+
+
+############################
+# Verify User
+############################
+
+
+@router.get("/verify")
+async def verify_user(token: str, request: Request):
+    try:
+        payload = jwt.decode(token, request.app.state.config.SECRET_KEY, algorithms=["HS256"])
+        user_id = payload.get("user_id")
+
+        # Retrieve the user and check if already verified
+        user = Users.get_user_by_id(user_id)
+        if user:
+            if user.is_verified:
+                return {"message": "User is already verified."}
+
+            # Mark user as verified and save to database
+            user.is_verified = True
+            Users.update_user(user)
+            return {"message": "Email verified successfully."}
+        else:
+            raise HTTPException(status_code=404, detail="User not found.")
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=400, detail="Verification token has expired.")
+
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="Invalid verification token.")
+
+
+############################
+# Resend Verify User
+############################
+@router.post("/resend-verification")
+async def resend_verification(email: str, request: Request):
+    # Check if user exists
+    user = Users.get_user_by_email(email.lower())
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    # Check if user is already verified
+    if user.is_verified:
+        return {"message": "User is already verified."}
+
+    verification_token = generate_verification_token(user.id, request.app.state.config.SECRET_KEY)
+    confirmation_link = f"{request.app.state.config.FRONTEND_URL}/verify?token={verification_token}"
+
+    # Resend confirmation email
+    EmailConfirmation().send_confirmation(
+        user_name=user.name,
+        recipient_email=user.email,
+        confirmation_link=confirmation_link
+    )
+
+    return {"message": "A new verification email has been sent."}
 
 
 ############################
@@ -431,7 +512,7 @@ class AdminConfig(BaseModel):
 
 @router.post("/admin/config")
 async def update_admin_config(
-    request: Request, form_data: AdminConfig, user=Depends(get_admin_user)
+        request: Request, form_data: AdminConfig, user=Depends(get_admin_user)
 ):
     request.app.state.config.SHOW_ADMIN_DETAILS = form_data.SHOW_ADMIN_DETAILS
     request.app.state.config.ENABLE_SIGNUP = form_data.ENABLE_SIGNUP

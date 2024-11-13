@@ -6,3 +6,5 @@ root/opensearch.xml -> <ShortName>Chat Experts</ShortName> <Description>Search C
 root/backend/open_webui/static/favicon.png
 root/backend/open_webui/static/logo.png
 root/backend/open_webui/static/splash.png
+root/backend/open_webui/apps/binaexperts/*
+root/backend/open_webui/apps/webui/routers/auths.py -> 314

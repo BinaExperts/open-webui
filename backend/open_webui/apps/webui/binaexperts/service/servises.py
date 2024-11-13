@@ -5,14 +5,15 @@ from email.mime.multipart import MIMEMultipart
 
 from . import const
 from fastapi import HTTPException, status
+from backend.open_webui.apps.webui.binaexperts import settings
 
 
 class EmailService:
-    def __init__(self, smtp_server, smtp_port, sender_email, sender_password):
-        self.smtp_server = smtp_server
-        self.smtp_port = smtp_port
-        self.sender_email = sender_email
-        self.sender_password = sender_password
+    def __init__(self, smtp_server=None, smtp_port=None, sender_email=None, sender_password=None):
+        self.smtp_server = smtp_server if smtp_server else settings.SMTP_SERVER
+        self.smtp_port = smtp_port if smtp_port else settings.SMTP_PORT
+        self.sender_email = sender_email if sender_email else settings.SENDER_EMAIL
+        self.sender_password = sender_password if sender_password else settings.SENDER_PASSWORD
 
     def send_email(self, recipient_email, subject, plain_message, html_message=None):
         try:
