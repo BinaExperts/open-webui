@@ -4,7 +4,7 @@ from typing import Optional
 from open_webui.apps.webui.internal.db import Base, JSONField, get_db
 from open_webui.apps.webui.models.chats import Chats
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import BigInteger, Column, String, Text
+from sqlalchemy import BigInteger, Column, String, Text, Boolean
 
 ####################
 # User DB Schema
@@ -19,7 +19,7 @@ class User(Base):
     email = Column(String)
     role = Column(String)
     profile_image_url = Column(Text)
-
+    is_activated = Column(Boolean, default=False)
     last_active_at = Column(BigInteger)
     updated_at = Column(BigInteger)
     created_at = Column(BigInteger)
